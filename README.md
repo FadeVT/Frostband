@@ -35,7 +35,17 @@ A modern, cross-platform wardriving management tool for Kismet and WiGLE with a 
 
 ## Screenshots
 
-![Frostband Interface](screenshots/main-window.png)
+### RPi Manager (Default View)
+![RPi Manager](screenshots/rpi-manager.png)
+
+### WiGLE CSV Upload
+![WiGLE Upload](screenshots/wigle-csv.png)
+
+### Transaction Downloads
+![Transactions](screenshots/transactions.png)
+
+### Settings & Configuration
+![Settings](screenshots/settings.png)
 
 ## Installation
 
