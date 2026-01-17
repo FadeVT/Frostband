@@ -35,47 +35,95 @@ A modern, cross-platform wardriving management tool for Kismet and WiGLE with a 
 
 ## Screenshots
 
-### RPi Manager (Default View)
-![RPi Manager](screenshots/rpi-manager.png)
-
-### WiGLE CSV Upload
-![WiGLE Upload](screenshots/wigle-csv.png)
-
-### Transaction Downloads
-![Transactions](screenshots/transactions.png)
-
-### Settings & Configuration
-![Settings](screenshots/settings.png)
+![Frostband Interface](screenshots/main-window.png)
 
 ## Installation
 
 ### Prerequisites
-- **Python 3.8 or higher**
-- **SSH client** (OpenSSH - usually pre-installed on Windows 10/11 and Linux)
 - **WiGLE account** with API credentials ([Get them here](https://wigle.net/account))
 
-### Install Dependencies
+### Windows Installation
 
-```bash
-pip install -r requirements.txt
-```
+1. **Install Python 3.8 or higher**
+   - Download from [python.org](https://www.python.org/downloads/)
+   - **IMPORTANT**: Check "Add Python to PATH" during installation
+   - Verify installation: Open PowerShell and run `python --version`
 
-### Run the Application
+2. **Install OpenSSH Client** (if not already installed)
+   - Settings → Apps → Optional Features → Add a feature
+   - Search for "OpenSSH Client" and install
+   - Or it may already be installed on Windows 10/11
 
-```bash
-python frostband.py
-```
+3. **Install Dependencies**
+   ```powershell
+   python -m pip install -r requirements.txt
+   ```
+   
+   **Note**: If `pip install` doesn't work, always use `python -m pip` instead.
+
+4. **Run the Application**
+   ```powershell
+   python frostband.py
+   ```
+
+### Linux Installation
+
+1. **Install Python 3.8 or higher**
+   ```bash
+   # Ubuntu/Debian
+   sudo apt update
+   sudo apt install python3 python3-pip
+   
+   # Fedora
+   sudo dnf install python3 python3-pip
+   
+   # Arch
+   sudo pacman -S python python-pip
+   ```
+
+2. **Install OpenSSH Client** (usually pre-installed)
+   ```bash
+   # Ubuntu/Debian
+   sudo apt install openssh-client
+   
+   # Fedora
+   sudo dnf install openssh-clients
+   
+   # Arch
+   sudo pacman -S openssh
+   ```
+
+3. **Install Dependencies**
+   ```bash
+   pip3 install -r requirements.txt
+   # or
+   python3 -m pip install -r requirements.txt
+   ```
+
+4. **Run the Application**
+   ```bash
+   python3 frostband.py
+   ```
 
 ## Building Standalone Executable (Windows)
 
 For Windows users who want a standalone .exe file:
 
-```bash
-pip install pyinstaller
-python -m PyInstaller --onefile --windowed --name Frostband --icon=frostband.ico frostband.py
-```
+1. **Install PyInstaller**
+   ```powershell
+   python -m pip install pyinstaller
+   ```
 
-The executable will be created in the `dist/` folder.
+2. **Build the executable**
+   ```powershell
+   python -m PyInstaller --onefile --windowed --name Frostband --icon=frostband.ico frostband.py
+   ```
+
+3. **Find your executable**
+   
+   The executable will be created in the `dist/` folder.
+   
+   **Note**: The first build may take a few minutes. The final .exe will be 15-25 MB.
 
 ## First-Time Setup
 
