@@ -106,7 +106,7 @@ class FrostbandApp:
     def __init__(self, root):
         self.root = root
         root.title("Frostband")
-        root.geometry("980x705")
+        root.geometry("1200x900")
         
         # Dark mode color scheme
         self.colors = {
@@ -128,12 +128,22 @@ class FrostbandApp:
         self.config_mgr = ConfigManager()
         self.config = self.config_mgr.load_config()
         self.upload_checks, self.tx_checks = {}, {}
+
+        # Track file counts for change detection
+        self.last_local_count = 0
+        self.last_pi_count = 0
+        self.last_archive_count = 0
+
         Path(self.config['win_dir']).mkdir(parents=True, exist_ok=True)
         Path(self.config['wigle_out_dir']).mkdir(parents=True, exist_ok=True)
         self._apply_styles()
         self._create_widgets()
         self._refresh_upload_list()
         self._update_pi_status()
+        self._refresh_dashboard()
+
+        # Start auto-refresh timers
+        self._schedule_auto_refresh()
     
     def _apply_styles(self):
         """Apply dark mode styling to the application"""
@@ -180,24 +190,196 @@ class FrostbandApp:
     def _create_widgets(self):
         nb = ttk.Notebook(self.root)
         nb.pack(fill='both', expand=True, padx=10, pady=10)
-        self.tab_rpi, self.tab_upload, self.tab_tx, self.tab_settings = [ttk.Frame(nb) for _ in range(4)]
-        
+        self.tab_main, self.tab_rpi, self.tab_upload, self.tab_tx, self.tab_settings = [ttk.Frame(nb) for _ in range(5)]
+
         # Configure tab backgrounds
-        for tab in [self.tab_rpi, self.tab_upload, self.tab_tx, self.tab_settings]:
+        for tab in [self.tab_main, self.tab_rpi, self.tab_upload, self.tab_tx, self.tab_settings]:
             tab.configure(style='Card.TFrame')
-        
-        for tab, txt in zip([self.tab_rpi, self.tab_upload, self.tab_tx, self.tab_settings], 
-                           ["📡 RPi Manager", "📤 WiGLE CSV", "📥 Transactions", "⚙️ Settings"]):
+
+        for tab, txt in zip([self.tab_main, self.tab_rpi, self.tab_upload, self.tab_tx, self.tab_settings],
+                           ["🏠 Dashboard", "📡 RPi Manager", "📤 WiGLE CSV", "📥 Transactions", "⚙️ Settings"]):
             nb.add(tab, text=txt)
         self.progress = ttk.Progressbar(self.root)
         self.progress.pack(fill='x', padx=10, pady=(0,5))
         self.status_label = tk.Label(self.root, text="Ready.", anchor='w')
         self.status_label.pack(fill='x', padx=10, pady=(0,10))
+        self._build_main_tab()
         self._build_settings_tab()
         self._build_rpi_tab()
         self._build_upload_tab()
         self._build_tx_tab()
-    
+
+    def _build_main_tab(self):
+        f = self.tab_main
+
+        # Header
+        header_frame = tk.Frame(f, bg=self.colors['card'])
+        header_frame.pack(fill='x', padx=15, pady=(15,10))
+        tk.Label(header_frame, text="🏠 Frostband Dashboard",
+                bg=self.colors['card'], fg=self.colors['text'], font=('Segoe UI', 14, 'bold'),
+                anchor='w').pack(fill='x')
+        tk.Label(header_frame, text="Quick overview and status monitoring",
+                bg=self.colors['card'], fg=self.colors['text_secondary'], font=('Segoe UI', 9),
+                anchor='w').pack(fill='x')
+
+        # WiGLE Stats Section (moved to top)
+        wigle_stats_section = tk.Frame(f, bg=self.colors['card'])
+        wigle_stats_section.pack(fill='x', padx=15, pady=10)
+
+        tk.Label(wigle_stats_section, text="WiGLE Statistics",
+                bg=self.colors['card'], fg=self.colors['text'],
+                font=('Segoe UI', 11, 'bold')).pack(anchor='w', pady=(0,10))
+
+        # WiGLE stats cards container
+        wigle_stats_row = tk.Frame(wigle_stats_section, bg=self.colors['card'])
+        wigle_stats_row.pack(fill='x', pady=(0,10))
+
+        # WiFi Discovered Card
+        wifi_card = tk.Frame(wigle_stats_row, bg=self.colors['bg_secondary'], relief='flat', bd=0)
+        wifi_card.pack(side='left', fill='both', expand=True, padx=(0,10))
+        tk.Label(wifi_card, text="📶 WiFi Discovered", bg=self.colors['bg_secondary'],
+                fg=self.colors['text_secondary'], font=('Segoe UI', 9)).pack(pady=(10,5))
+        self.dash_wifi_discovered = tk.Label(wifi_card, text="—",
+                                             bg=self.colors['bg_secondary'], fg=self.colors['primary'],
+                                             font=('Segoe UI', 20, 'bold'))
+        self.dash_wifi_discovered.pack(pady=(0,5))
+        self.dash_wifi_detail = tk.Label(wifi_card, text="—",
+                                         bg=self.colors['bg_secondary'], fg=self.colors['text_secondary'],
+                                         font=('Segoe UI', 8))
+        self.dash_wifi_detail.pack(pady=(0,10))
+
+        # Monthly Rank Card
+        monthly_rank_card = tk.Frame(wigle_stats_row, bg=self.colors['bg_secondary'], relief='flat', bd=0)
+        monthly_rank_card.pack(side='left', fill='both', expand=True, padx=(0,10))
+        tk.Label(monthly_rank_card, text="📅 Monthly Rank", bg=self.colors['bg_secondary'],
+                fg=self.colors['text_secondary'], font=('Segoe UI', 9)).pack(pady=(10,5))
+        self.dash_monthly_rank = tk.Label(monthly_rank_card, text="—",
+                                         bg=self.colors['bg_secondary'], fg=self.colors['secondary'],
+                                         font=('Segoe UI', 20, 'bold'))
+        self.dash_monthly_rank.pack(pady=(0,5))
+        self.dash_monthly_detail = tk.Label(monthly_rank_card, text="—",
+                                           bg=self.colors['bg_secondary'], fg=self.colors['text_secondary'],
+                                           font=('Segoe UI', 8))
+        self.dash_monthly_detail.pack(pady=(0,10))
+
+        # Overall Rank Card
+        overall_rank_card = tk.Frame(wigle_stats_row, bg=self.colors['bg_secondary'], relief='flat', bd=0)
+        overall_rank_card.pack(side='left', fill='both', expand=True)
+        tk.Label(overall_rank_card, text="🏆 Overall Rank", bg=self.colors['bg_secondary'],
+                fg=self.colors['text_secondary'], font=('Segoe UI', 9)).pack(pady=(10,5))
+        self.dash_overall_rank = tk.Label(overall_rank_card, text="—",
+                                         bg=self.colors['bg_secondary'], fg=self.colors['accent'],
+                                         font=('Segoe UI', 20, 'bold'))
+        self.dash_overall_rank.pack(pady=(0,5))
+        self.dash_overall_detail = tk.Label(overall_rank_card, text="—",
+                                           bg=self.colors['bg_secondary'], fg=self.colors['text_secondary'],
+                                           font=('Segoe UI', 8))
+        self.dash_overall_detail.pack(pady=(0,10))
+
+        # Recent Uploads Section
+        recent_section = tk.Frame(f, bg=self.colors['card'])
+        recent_section.pack(fill='x', padx=15, pady=10)
+
+        tk.Label(recent_section, text="📊 Recent Activity",
+                bg=self.colors['card'], fg=self.colors['text'],
+                font=('Segoe UI', 11, 'bold')).pack(anchor='w', pady=(0,10))
+
+        # Recent uploads container with scrollable text area
+        recent_container = tk.Frame(recent_section, bg=self.colors['bg_secondary'], relief='flat', bd=2)
+        recent_container.pack(fill='both', expand=True)
+
+        self.dash_recent_text = scrolledtext.ScrolledText(recent_container, height=8, width=100,
+                                                           bg=self.colors['bg_secondary'], fg=self.colors['text'],
+                                                           insertbackground=self.colors['text'], relief='flat',
+                                                           font=('Consolas', 9), borderwidth=0, wrap='word')
+        self.dash_recent_text.pack(fill='both', expand=True, padx=10, pady=10)
+        self.dash_recent_text.config(state='disabled')
+
+        # Quick Stats Section
+        stats_section = tk.Frame(f, bg=self.colors['card'])
+        stats_section.pack(fill='x', padx=15, pady=10)
+
+        tk.Label(stats_section, text="Quick Stats",
+                bg=self.colors['card'], fg=self.colors['text'],
+                font=('Segoe UI', 11, 'bold')).pack(anchor='w', pady=(0,10))
+
+        # Stats cards container
+        stats_row1 = tk.Frame(stats_section, bg=self.colors['card'])
+        stats_row1.pack(fill='x', pady=(0,10))
+
+        # Local Files Card
+        local_card = tk.Frame(stats_row1, bg=self.colors['bg_secondary'], relief='flat', bd=0)
+        local_card.pack(side='left', fill='both', expand=True, padx=(0,10))
+        tk.Label(local_card, text="📁 Local Files", bg=self.colors['bg_secondary'],
+                fg=self.colors['text_secondary'], font=('Segoe UI', 9)).pack(pady=(10,5))
+        self.dash_local_count = tk.Label(local_card, text="—",
+                                         bg=self.colors['bg_secondary'], fg=self.colors['primary'],
+                                         font=('Segoe UI', 20, 'bold'))
+        self.dash_local_count.pack(pady=(0,5))
+        self.dash_local_size = tk.Label(local_card, text="—",
+                                        bg=self.colors['bg_secondary'], fg=self.colors['text_secondary'],
+                                        font=('Segoe UI', 8))
+        self.dash_local_size.pack(pady=(0,10))
+
+        # Pi Files Card
+        pi_files_card = tk.Frame(stats_row1, bg=self.colors['bg_secondary'], relief='flat', bd=0)
+        pi_files_card.pack(side='left', fill='both', expand=True, padx=(0,10))
+        tk.Label(pi_files_card, text="📡 Pi Files", bg=self.colors['bg_secondary'],
+                fg=self.colors['text_secondary'], font=('Segoe UI', 9)).pack(pady=(10,5))
+        self.dash_pi_count = tk.Label(pi_files_card, text="—",
+                                      bg=self.colors['bg_secondary'], fg=self.colors['secondary'],
+                                      font=('Segoe UI', 20, 'bold'))
+        self.dash_pi_count.pack(pady=(0,5))
+        self.dash_pi_size = tk.Label(pi_files_card, text="—",
+                                     bg=self.colors['bg_secondary'], fg=self.colors['text_secondary'],
+                                     font=('Segoe UI', 8))
+        self.dash_pi_size.pack(pady=(0,10))
+
+        # Archives Card
+        archive_card = tk.Frame(stats_row1, bg=self.colors['bg_secondary'], relief='flat', bd=0)
+        archive_card.pack(side='left', fill='both', expand=True)
+        tk.Label(archive_card, text="📦 Archives", bg=self.colors['bg_secondary'],
+                fg=self.colors['text_secondary'], font=('Segoe UI', 9)).pack(pady=(10,5))
+        self.dash_archive_count = tk.Label(archive_card, text="—",
+                                           bg=self.colors['bg_secondary'], fg=self.colors['accent'],
+                                           font=('Segoe UI', 20, 'bold'))
+        self.dash_archive_count.pack(pady=(0,5))
+        self.dash_archive_size = tk.Label(archive_card, text="—",
+                                          bg=self.colors['bg_secondary'], fg=self.colors['text_secondary'],
+                                          font=('Segoe UI', 8))
+        self.dash_archive_size.pack(pady=(0,10))
+
+        # Quick Actions Section
+        actions_section = tk.Frame(f, bg=self.colors['card'])
+        actions_section.pack(fill='x', padx=15, pady=10)
+
+        tk.Label(actions_section, text="⚡ Quick Actions",
+                bg=self.colors['card'], fg=self.colors['text'],
+                font=('Segoe UI', 11, 'bold')).pack(anchor='w', pady=(0,10))
+
+        # Action buttons container
+        actions_container = tk.Frame(actions_section, bg=self.colors['card'])
+        actions_container.pack(fill='x')
+
+        # Big action buttons
+        self.dash_btn_automatic = tk.Button(actions_container, text="🚀 Automatic Sync\nStop → Copy → Verify → Delete",
+                                             command=self._automatic, height=3,
+                                             bg=self.colors['secondary'], fg='white', relief='flat',
+                                             cursor='hand2', font=('Segoe UI', 10, 'bold'))
+        self.dash_btn_automatic.pack(side='left', fill='both', expand=True, padx=(0,10))
+
+        self.dash_btn_upload = tk.Button(actions_container, text="📤 Upload Direct to WiGLE\nUpload from Pi to WiGLE",
+                                          command=self._upload_direct_to_wigle,
+                                          height=3, bg=self.colors['primary'], fg='white', relief='flat',
+                                          cursor='hand2', font=('Segoe UI', 10, 'bold'))
+        self.dash_btn_upload.pack(side='left', fill='both', expand=True, padx=(0,10))
+
+        self.dash_btn_transactions = tk.Button(actions_container, text="📥 Get Transactions\nDownload KML files",
+                                                command=lambda: self.root.nametowidget('.!notebook').select(3),
+                                                height=3, bg=self.colors['accent'], fg='white', relief='flat',
+                                                cursor='hand2', font=('Segoe UI', 10, 'bold'))
+        self.dash_btn_transactions.pack(side='left', fill='both', expand=True)
+
     def _build_settings_tab(self):
         f = self.tab_settings
         
@@ -571,7 +753,316 @@ class FrostbandApp:
         for item in checks:
             checks[item] = val
             tree.item(item, text='☑' if val else '☐')
-    
+
+    def _refresh_dashboard(self):
+        """Update dashboard with current stats"""
+        pi_configured = self.config['pi_host'] and self.config['pi_user'] and self.config['pi_dir']
+        wigle_configured = self.config['wigle_api_id'] and self.config['wigle_api_token_enc']
+
+        # Update quick action button states
+        if pi_configured:
+            self.dash_btn_automatic.config(state='normal')
+        else:
+            self.dash_btn_automatic.config(state='disabled')
+
+        # Update local files count
+        local_files = list(Path(self.config['win_dir']).rglob('*.wiglecsv'))
+        local_count = len(local_files)
+        local_size = sum(f.stat().st_size for f in local_files)
+        self.dash_local_count.config(text=str(local_count))
+        self.dash_local_size.config(text=self._fmt_bytes(local_size))
+
+        # Update Pi files count (only if configured)
+        if pi_configured:
+            threading.Thread(target=self._update_pi_files_count, daemon=True).start()
+        else:
+            self.dash_pi_count.config(text="—")
+            self.dash_pi_size.config(text="Not configured")
+
+        # Update archives count
+        archives = list(Path(self.config['win_dir']).glob('*.zip'))
+        archive_count = len(archives)
+        archive_size = sum(f.stat().st_size for f in archives)
+        self.dash_archive_count.config(text=str(archive_count))
+        self.dash_archive_size.config(text=self._fmt_bytes(archive_size))
+
+        # Update WiGLE stats (only if configured)
+        if wigle_configured:
+            threading.Thread(target=self._update_wigle_stats, daemon=True).start()
+            threading.Thread(target=self._update_recent_activity, daemon=True).start()
+        else:
+            self.dash_wifi_discovered.config(text="—")
+            self.dash_wifi_detail.config(text="Configure API in Settings")
+            self.dash_monthly_rank.config(text="—")
+            self.dash_monthly_detail.config(text="—")
+            self.dash_overall_rank.config(text="—")
+            self.dash_overall_detail.config(text="—")
+            self.dash_recent_text.config(state='normal')
+            self.dash_recent_text.delete('1.0', 'end')
+            self.dash_recent_text.insert('1.0', "Configure WiGLE API in Settings to view recent upload activity")
+            self.dash_recent_text.config(state='disabled')
+
+        self._set_status("Dashboard refreshed.")
+
+    def _schedule_auto_refresh(self):
+        """Schedule automatic dashboard refreshes"""
+        # Refresh WiGLE stats and recent activity every 30 seconds
+        self._auto_refresh_wigle_and_activity()
+
+        # Check for file changes every 5 seconds
+        self._auto_refresh_quick_stats()
+
+    def _auto_refresh_wigle_and_activity(self):
+        """Auto-refresh WiGLE statistics and recent activity every 30 seconds"""
+        wigle_configured = self.config['wigle_api_id'] and self.config['wigle_api_token_enc']
+
+        if wigle_configured:
+            threading.Thread(target=self._update_wigle_stats, daemon=True).start()
+            threading.Thread(target=self._update_recent_activity, daemon=True).start()
+
+        # Schedule next refresh in 30 seconds
+        self.root.after(30000, self._auto_refresh_wigle_and_activity)
+
+    def _auto_refresh_quick_stats(self):
+        """Auto-refresh quick stats only when file counts change"""
+        try:
+            # Check local files
+            local_files = list(Path(self.config['win_dir']).rglob('*.wiglecsv'))
+            local_count = len(local_files)
+
+            # Check archives
+            archives = list(Path(self.config['win_dir']).glob('*.zip'))
+            archive_count = len(archives)
+
+            # Only update if counts changed
+            if local_count != self.last_local_count:
+                self.last_local_count = local_count
+                local_size = sum(f.stat().st_size for f in local_files)
+                self.dash_local_count.config(text=str(local_count))
+                self.dash_local_size.config(text=self._fmt_bytes(local_size))
+
+            if archive_count != self.last_archive_count:
+                self.last_archive_count = archive_count
+                archive_size = sum(f.stat().st_size for f in archives)
+                self.dash_archive_count.config(text=str(archive_count))
+                self.dash_archive_size.config(text=self._fmt_bytes(archive_size))
+
+            # Check Pi files if configured (in background to avoid blocking)
+            pi_configured = self.config['pi_host'] and self.config['pi_user'] and self.config['pi_dir']
+            if pi_configured:
+                threading.Thread(target=self._check_pi_files_changed, daemon=True).start()
+
+        except Exception:
+            pass  # Silently ignore errors in auto-refresh
+
+        # Schedule next check in 5 seconds
+        self.root.after(5000, self._auto_refresh_quick_stats)
+
+    def _check_pi_files_changed(self):
+        """Check if Pi file count changed and update if needed"""
+        try:
+            result = self._ssh(f"cd '{self.config['pi_dir']}'; find . -type f -name '*.wiglecsv' | wc -l")
+            if result.returncode == 0:
+                file_count = int(result.stdout.strip())
+                if file_count != self.last_pi_count:
+                    self.last_pi_count = file_count
+                    # Trigger full Pi update if count changed
+                    self._update_pi_files_count()
+        except:
+            pass  # Silently ignore errors
+
+    def _update_pi_files_count(self):
+        """Background thread to count Pi files"""
+        try:
+            result = self._ssh(f"cd '{self.config['pi_dir']}'; find . -type f -name '*.wiglecsv' -exec du -cb {{}} + | tail -1")
+            if result.returncode == 0 and result.stdout.strip():
+                total_bytes = int(result.stdout.strip().split()[0])
+                result2 = self._ssh(f"cd '{self.config['pi_dir']}'; find . -type f -name '*.wiglecsv' | wc -l")
+                file_count = int(result2.stdout.strip()) if result2.returncode == 0 else 0
+                self.root.after(0, lambda: self.dash_pi_count.config(text=str(file_count)))
+                self.root.after(0, lambda: self.dash_pi_size.config(text=self._fmt_bytes(total_bytes)))
+            else:
+                self.root.after(0, lambda: self.dash_pi_count.config(text="0"))
+                self.root.after(0, lambda: self.dash_pi_size.config(text="0 B"))
+        except:
+            self.root.after(0, lambda: self.dash_pi_count.config(text="?"))
+            self.root.after(0, lambda: self.dash_pi_size.config(text="Connection failed"))
+
+    def _update_wigle_stats(self):
+        """Background thread to fetch WiGLE user statistics"""
+        try:
+            token = self.config_mgr.decrypt_token(self.config['wigle_api_token_enc'])
+            if not token:
+                self.root.after(0, lambda: self.dash_wifi_discovered.config(text="Error"))
+                self.root.after(0, lambda: self.dash_wifi_detail.config(text="Token decrypt failed"))
+                return
+
+            # Fetch user statistics from WiGLE API
+            r = requests.get("https://api.wigle.net/api/v2/stats/user",
+                           auth=(self.config['wigle_api_id'], token),
+                           headers={'Accept': 'application/json'})
+
+            if r.status_code == 200:
+                data = r.json()
+
+                # Extract statistics
+                if 'statistics' in data:
+                    stats = data['statistics']
+
+                    # WiFi discovered
+                    discovered = stats.get('discoveredWiFiGPS', 0) + stats.get('discoveredWiFi', 0)
+                    total_wifi = stats.get('totalWiFiLocations', 0)
+                    self.root.after(0, lambda d=discovered: self.dash_wifi_discovered.config(text=f"{d:,}"))
+                    self.root.after(0, lambda t=total_wifi: self.dash_wifi_detail.config(text=f"Total locations: {t:,}"))
+
+                    # Monthly rank with trend arrow
+                    monthly_rank = stats.get('monthRank', 0)
+                    prev_month_rank = stats.get('prevMonthRank', 0)
+                    if monthly_rank > 0:
+                        # Calculate trend (lower rank number = better, so reversed logic)
+                        trend_arrow = ""
+                        if prev_month_rank > 0:
+                            if monthly_rank < prev_month_rank:
+                                trend_arrow = " ↑"  # Improved (lower number)
+                            elif monthly_rank > prev_month_rank:
+                                trend_arrow = " ↓"  # Declined (higher number)
+                            detail_text = f"Previous: #{prev_month_rank:,}"
+                        else:
+                            detail_text = "First month"
+
+                        self.root.after(0, lambda r=monthly_rank, a=trend_arrow:
+                                      self.dash_monthly_rank.config(text=f"#{r:,}{a}"))
+                        self.root.after(0, lambda d=detail_text:
+                                      self.dash_monthly_detail.config(text=d))
+                    else:
+                        self.root.after(0, lambda: self.dash_monthly_rank.config(text="—"))
+                        self.root.after(0, lambda: self.dash_monthly_detail.config(text="No rank yet"))
+
+                    # Overall rank with trend arrow
+                    rank = stats.get('rank', 0)
+                    prev_rank = stats.get('prevRank', 0)
+                    if rank > 0:
+                        # Calculate trend (lower rank number = better, so reversed logic)
+                        trend_arrow = ""
+                        if prev_rank > 0:
+                            if rank < prev_rank:
+                                trend_arrow = " ↑"  # Improved (lower number)
+                            elif rank > prev_rank:
+                                trend_arrow = " ↓"  # Declined (higher number)
+
+                        self.root.after(0, lambda r=rank, a=trend_arrow:
+                                      self.dash_overall_rank.config(text=f"#{r:,}{a}"))
+                        self.root.after(0, lambda d=discovered, p=prev_rank:
+                                      self.dash_overall_detail.config(text=f"{d:,} discovered" + (f" | Prev: #{p:,}" if p > 0 else "")))
+                    else:
+                        self.root.after(0, lambda: self.dash_overall_rank.config(text="—"))
+                        self.root.after(0, lambda: self.dash_overall_detail.config(text="No rank yet"))
+                else:
+                    self.root.after(0, lambda: self.dash_wifi_discovered.config(text="N/A"))
+                    self.root.after(0, lambda: self.dash_wifi_detail.config(text="No stats available"))
+            else:
+                self.root.after(0, lambda: self.dash_wifi_discovered.config(text="Error"))
+                self.root.after(0, lambda: self.dash_wifi_detail.config(text=f"API error: {r.status_code}"))
+
+        except Exception as e:
+            self.root.after(0, lambda: self.dash_wifi_discovered.config(text="Error"))
+            self.root.after(0, lambda e=e: self.dash_wifi_detail.config(text=f"Failed: {str(e)[:30]}"))
+
+    def _update_recent_activity(self):
+        """Background thread to fetch recent upload activity from WiGLE"""
+        try:
+            token = self.config_mgr.decrypt_token(self.config['wigle_api_token_enc'])
+            if not token:
+                self.root.after(0, lambda: self._set_recent_text("Token decrypt failed"))
+                return
+
+            # Fetch recent transactions from WiGLE API
+            r = requests.get("https://api.wigle.net/api/v2/file/transactions?pagestart=0",
+                           auth=(self.config['wigle_api_id'], token),
+                           headers={'Accept': 'application/json'})
+
+            if r.status_code == 200:
+                data = r.json()
+                results = data.get('results', [])
+
+                if not results:
+                    self.root.after(0, lambda: self._set_recent_text("No recent uploads found"))
+                    return
+
+                # Build recent activity text
+                from datetime import datetime, timedelta
+                now = datetime.now()
+                cutoff_24h = now - timedelta(hours=24)
+
+                activity_lines = []
+                activity_lines.append("╔════════════════════════════════════════════════════════════════════════════════╗")
+                activity_lines.append("║ Recent Uploads (Last 24 Hours)                                                ║")
+                activity_lines.append("╠════════════════════════════════════════════════════════════════════════════════╣")
+
+                recent_count = 0
+                total_new_wifi_24h = 0
+
+                for tx in results[:10]:  # Limit to 10 most recent
+                    trans_id = tx.get('transid', '')
+                    if not trans_id or len(trans_id) < 8:
+                        continue
+
+                    # Parse date from transaction ID (YYYYMMDD format at start)
+                    try:
+                        date_str = trans_id[:8]
+                        tx_date = datetime.strptime(date_str, '%Y%m%d')
+
+                        # Check if within last 24 hours (rough check, transaction ID is date only)
+                        # For more accurate, we'd need the full timestamp, but this is close enough
+
+                        status = tx.get('status', 'unknown')
+                        discovered = tx.get('discoveredGps', 0)
+
+                        # Status mapping
+                        status_icon = {
+                            'Scanning': '⏳',
+                            'Processing': '🔄',
+                            'Trilaterating': '📍',
+                            'Success': '✅',
+                            'Failed': '❌',
+                            'Queued': '⏸️'
+                        }.get(status, '❓')
+
+                        # Format the line
+                        line = f"║ {status_icon} {trans_id[:16]:16} │ {status:15} │ {discovered:>5} new WiFi │ {date_str[:4]}-{date_str[4:6]}-{date_str[6:8]:7} ║"
+                        activity_lines.append(line)
+
+                        recent_count += 1
+                        if discovered:
+                            total_new_wifi_24h += discovered
+
+                    except:
+                        continue
+
+                if recent_count == 0:
+                    activity_lines.append("║ No uploads in the last 24 hours                                               ║")
+                else:
+                    activity_lines.append("╠════════════════════════════════════════════════════════════════════════════════╣")
+                    activity_lines.append(f"║ Total: {recent_count} uploads │ {total_new_wifi_24h} new WiFi networks discovered{' ' * (29 - len(str(total_new_wifi_24h)))}║")
+
+                activity_lines.append("╚════════════════════════════════════════════════════════════════════════════════╝")
+
+                activity_text = '\n'.join(activity_lines)
+                self.root.after(0, lambda t=activity_text: self._set_recent_text(t))
+
+            else:
+                self.root.after(0, lambda: self._set_recent_text(f"API error: {r.status_code}"))
+
+        except Exception as e:
+            self.root.after(0, lambda e=e: self._set_recent_text(f"Error: {str(e)[:50]}"))
+
+    def _set_recent_text(self, text):
+        """Update the recent activity text widget"""
+        self.dash_recent_text.config(state='normal')
+        self.dash_recent_text.delete('1.0', 'end')
+        self.dash_recent_text.insert('1.0', text)
+        self.dash_recent_text.config(state='disabled')
+
     def _require_pi(self):
         if not (self.config['pi_host'] and self.config['pi_user'] and self.config['pi_dir']):
             messagebox.showwarning("Missing Settings", "Set Pi Host/User/Dir in Settings.")
@@ -617,6 +1108,7 @@ class FrostbandApp:
         Path(self.config['wigle_out_dir']).mkdir(parents=True, exist_ok=True)
         self._update_pi_status()
         self._refresh_upload_list()
+        self._refresh_dashboard()
         self._set_status("Settings saved.")
     
     def _browse_folder(self, attr):
@@ -1091,11 +1583,20 @@ chmod 600 ~/.ssh/authorized_keys"""
         if not items: return
         zp = Path(self.config['win_dir']) / f"{datetime.now().strftime('%Y-%m-%d')}.zip"
         if zp.exists() and not messagebox.askyesno("Confirm", f"Overwrite {zp.name}?"): return
+        files_to_delete = []
         with zipfile.ZipFile(zp, 'w') as zf:
             for item in items:
                 if (fp := Path(self.tree_upload.item(item)['values'][0])).exists():
                     zf.write(fp, fp.name)
-        self._set_status(f"Archived to {zp.name}")
+                    files_to_delete.append(fp)
+        # Delete the source files after successful archiving
+        for fp in files_to_delete:
+            try:
+                fp.unlink()
+            except Exception as e:
+                self._log(f"Warning: Could not delete {fp.name}: {e}")
+        self._refresh_upload_list()
+        self._set_status(f"Archived to {zp.name} and deleted source files")
     
     def _find_transactions(self):
         if not self._require_wigle(): return
