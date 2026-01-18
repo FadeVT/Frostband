@@ -8,6 +8,13 @@ A modern, cross-platform wardriving management tool for Kismet and WiGLE with a 
 
 ## Features
 
+### 📊 Dashboard
+- **Real-time WiGLE statistics**: WiFi discovered, monthly rank, overall rank with trend arrows
+- **Recent upload activity**: View processing status (scanning, trilaterating, success)
+- **Quick stats**: Local files, Pi files, and archives at a glance
+- **Quick actions**: One-click access to automatic sync, direct upload, and transactions
+- **Auto-refresh**: WiGLE stats update every 30s, file counts update on change detection
+
 ### 📡 Raspberry Pi Management
 - **Automated workflow**: Stop Kismet → Copy files → Verify integrity → Delete from Pi
 - **Direct WiGLE upload**: Upload files from Pi to WiGLE without local storage
@@ -35,7 +42,10 @@ A modern, cross-platform wardriving management tool for Kismet and WiGLE with a 
 
 ## Screenshots
 
-### RPi Manager (Default View)
+### Dashboard
+![Dashboard](screenshots/dashboard.png)
+
+### RPi Manager
 ![RPi Manager](screenshots/rpi-manager.png)
 
 ### WiGLE CSV Upload
